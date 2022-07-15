@@ -1,11 +1,28 @@
 ﻿using System;
-
+using LegacyApp.Factories;
+using LegacyApp.Interfaces;
 namespace LegacyApp
 {
-    public class UserService
+    public class UserServicet
     {
-        public bool AddUser(string firname, string surname, string email, DateTime dateOfBirth, int clientId)
+        private readonly IClientRepository _clientRepository;
+        private readonly bool _isTest;
+
+        public UserService()
         {
+            _clientRepository = new ClientRepository();
+            _isTest = false;
+        }
+
+        public UserService(IClientRepository clientRepository, bool isTest)
+        {
+            _clientRepository = clientRepository;
+            _isTest = isTest;
+        }
+        // making public so I can test I would prefer to pull this out
+        public bool IsUserValid(string firname, string surname, string email, DateTime dateOfBirth, DateTime now)
+        {
+            bool isValidUser = true;
             if (string.IsNullOrEmpty(firname) || string.IsNullOrEmpty(surname))
             {
                 return false;
@@ -16,7 +33,6 @@ namespace LegacyApp
                 return false;
             }
 
-            var now = DateTime.Now;
             int age = now.Year - dateOfBirth.Year;
 
             if (now.Month < dateOfBirth.Month || (now.Month == dateOfBirth.Month && now.Day < dateOfBirth.Day)) age--;
@@ -26,8 +42,18 @@ namespace LegacyApp
                 return false;
             }
 
-            var clientRepository = new ClientRepository();
-            var client = clientRepository.GetById(clientId);
+            return isValidUser;
+        }
+
+        public bool AddUser(string firname, string surname, string email, DateTime dateOfBirth, int clientId)
+        {
+
+            if (!IsUserValid(firname, surname, email, dateOfBirth, DateTime.Now))
+            {
+                return false;
+            }
+
+            var client = _clientRepository.GetById(clientId);
 
             var user = new User
             {
@@ -38,41 +64,44 @@ namespace LegacyApp
                 Surname = surname
             };
 
-            if (client.Name == "VeryImportantClient")
-            {
-                // Skip credit chek
-                user.HasCreditLimit = false;
-            }
-            else if (client.Name == "ImportantClient")
-            {
-                // Do credit check and double credit limit
-                user.HasCreditLimit = true;
-                using (var userCreditService = new UserCreditServiceClient())
-                {
-                    var creditLimit = userCreditService.GetCreditLimit(user.Firstname, user.Surname, user.DateOfBirth);
-                    creditLimit = creditLimit * 2;
-                    user.CreditLimit = creditLimit;
-                }
-            }
-            else
-            {
-                // Do credit check
-                user.HasCreditLimit = true;
-                using (var userCreditService = new UserCreditServiceClient())
-                {
-                    var creditLimit = userCreditService.GetCreditLimit(user.Firstname, user.Surname, user.DateOfBirth);
-                    user.CreditLimit = creditLimit;
-                }
-            }
+            UserCreditCheck(client, user);
 
             if (user.HasCreditLimit && user.CreditLimit < 500)
             {
                 return false;
             }
-            
-            UserDataAccess.AddUser(user);
+
+            // have figure out how to abstract away static class. This so for now I am putting bool for testing sincerio 
+            // f I had more time I might try a wrapper function around it with an interface but I may be over engineering it
+            if (!_isTest)
+            {
+                UserDataAccess.AddUser(user);
+            }
 
             return true;
+        }
+
+        private void UserCreditCheck(Client client, User user)
+        {
+            if (client.Name == "VeryImportantClient")
+            {
+                // Skip credit chek
+                user.HasCreditLimit = false;
+            }
+            else
+            {
+                // Do credit check and double credit limit
+                // the using statement will cause issues using di pattern because of scoping of the using statement 
+                // here is where I would add factory  pattern one with the concrete class and the other with a test class
+                // I want elavate some of the logic out if the if else because of dry
+                // could not get the factory pattern to work here
+                user.HasCreditLimit = true;
+                var factory = new UserCreditServiceFactory();
+                using var userCreditService = factory.GetUserCreditServiceClient(_isTest);
+                var creditLimit = userCreditService.GetCreditLimit(user.Firstname, user.Surname, user.DateOfBirth);
+                creditLimit = client.Name == "ImportantClient" ? creditLimit * 2 : creditLimit;
+                user.CreditLimit = creditLimit;
+            }
         }
     }
 }

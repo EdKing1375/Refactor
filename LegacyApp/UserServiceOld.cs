@@ -1,26 +1,11 @@
 ﻿using System;
-using LegacyApp.Interfaces;
+
 namespace LegacyApp
 {
-    public class UserServiceRefactor
+    public class UserServiceOld
     {
-        private readonly IClientRepository _clientRepository;
-        private readonly IUserCreditServiceChannel _userCreditService;
-
-        public UserServiceRefactor()
+        public bool AddUser(string firname, string surname, string email, DateTime dateOfBirth, int clientId)
         {
-            _clientRepository = new ClientRepository();
-        }
-
-        public UserServiceRefactor(IClientRepository clientRepository, IUserCreditServiceChannel userCreditService)
-        {
-            _clientRepository = clientRepository;
-            _userCreditService = userCreditService;
-        }
-
-        public static bool IsUserValid(string firname, string surname, string email, DateTime dateOfBirth, DateTime now)
-        {
-            bool isValidUser = true;
             if (string.IsNullOrEmpty(firname) || string.IsNullOrEmpty(surname))
             {
                 return false;
@@ -31,6 +16,7 @@ namespace LegacyApp
                 return false;
             }
 
+            var now = DateTime.Now;
             int age = now.Year - dateOfBirth.Year;
 
             if (now.Month < dateOfBirth.Month || (now.Month == dateOfBirth.Month && now.Day < dateOfBirth.Day)) age--;
@@ -40,18 +26,8 @@ namespace LegacyApp
                 return false;
             }
 
-            return isValidUser;
-        }
-
-        public bool AddUser(string firname, string surname, string email, DateTime dateOfBirth, int clientId)
-        {
-          
-            if(!IsUserValid(firname, surname, email, dateOfBirth, DateTime.Now))
-            {
-                return false;
-            }
-
-            var client = _clientRepository.GetById(clientId);
+            var clientRepository = new ClientRepository();
+            var client = clientRepository.GetById(clientId);
 
             var user = new User
             {
@@ -70,8 +46,6 @@ namespace LegacyApp
             else if (client.Name == "ImportantClient")
             {
                 // Do credit check and double credit limit
-                // the using statement will cause issues using di pattern because of scoping of the using statement 
-                // here is where I would add factory  pattern one with the concrete class and the other with a test class
                 user.HasCreditLimit = true;
                 using (var userCreditService = new UserCreditServiceClient())
                 {
@@ -95,7 +69,7 @@ namespace LegacyApp
             {
                 return false;
             }
-
+            
             UserDataAccess.AddUser(user);
 
             return true;
